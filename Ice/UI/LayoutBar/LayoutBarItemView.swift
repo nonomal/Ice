@@ -121,14 +121,6 @@ final class LayoutBarItemView: NSView {
         return alert
     }
 
-    /// Provides an alert to display when the user is pressing a key while
-    /// moving a menu bar item.
-    func provideAlertForKeyDown() -> NSAlert {
-        let alert = NSAlert()
-        alert.messageText = "Do not press keys while moving menu bar items."
-        return alert
-    }
-
     override func draw(_ dirtyRect: NSRect) {
         if !isDraggingPlaceholder {
             image?.draw(
@@ -159,12 +151,6 @@ final class LayoutBarItemView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         super.mouseDragged(with: event)
-
-        guard event.modifierFlags.isEmpty else {
-            let alert = provideAlertForKeyDown()
-            alert.runModal()
-            return
-        }
 
         guard isEnabled else {
             let alert = provideAlertForDisabledItem()
