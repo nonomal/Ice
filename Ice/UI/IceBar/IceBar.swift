@@ -55,8 +55,7 @@ final class IceBarPanel: NSPanel {
         .store(in: &c)
 
         if
-            let appState,
-            let section = appState.menuBarManager.section(withName: .hidden),
+            let section = appState?.menuBarManager.section(withName: .hidden),
             let window = section.controlItem.window
         {
             window.publisher(for: \.frame)
@@ -64,6 +63,7 @@ final class IceBarPanel: NSPanel {
                 .sink { [weak self, weak window] _ in
                     guard
                         let self,
+                        let appState,
                         // Only continue if the menu bar is automatically hidden, as Ice
                         // can't currently display its menu bar items.
                         appState.menuBarManager.isMenuBarHiddenBySystemUserDefaults,
@@ -117,7 +117,7 @@ final class IceBarPanel: NSPanel {
                 }
                 return getOrigin(for: .iceIcon)
             case .mousePointer:
-                guard let location = MouseCursor.location(in: .appKit) else {
+                guard let location = MouseCursor.locationAppKit else {
                     return getOrigin(for: .iceIcon)
                 }
 
@@ -161,9 +161,12 @@ final class IceBarPanel: NSPanel {
         currentSection = section
 
         await appState.itemManager.cacheItemsIfNeeded()
-        await appState.imageCache.updateCache()
 
-        contentView = IceBarHostingView(appState: appState, colorManager: colorManager, section: section) { [weak self] in
+        if ScreenCapture.cachedCheckPermissions() {
+            await appState.imageCache.updateCache()
+        }
+
+        contentView = IceBarHostingView(appState: appState, colorManager: colorManager, screen: screen, section: section) { [weak self] in
             self?.close()
         }
 
@@ -196,11 +199,12 @@ private final class IceBarHostingView: NSHostingView<AnyView> {
     init(
         appState: AppState,
         colorManager: IceBarColorManager,
+        screen: NSScreen,
         section: MenuBarSection.Name,
         closePanel: @escaping () -> Void
     ) {
         super.init(
-            rootView: IceBarContentView(section: section, closePanel: closePanel)
+            rootView: IceBarContentView(screen: screen, section: section, closePanel: closePanel)
                 .environmentObject(appState)
                 .environmentObject(appState.imageCache)
                 .environmentObject(appState.itemManager)
@@ -236,6 +240,7 @@ private struct IceBarContentView: View {
     @State private var frame = CGRect.zero
     @State private var scrollIndicatorsFlashTrigger = 0
 
+    let screen: NSScreen
     let section: MenuBarSection.Name
     let closePanel: () -> Void
 
@@ -252,19 +257,14 @@ private struct IceBarContentView: View {
     }
 
     private var verticalPadding: CGFloat {
-        if let screen = imageCache.screen {
-            guard !screen.hasNotch else {
-                return 0
-            }
-        }
-        return 2
+        screen.hasNotch ? 0 : 2
     }
 
-    var contentHeight: CGFloat? {
-        guard let menuBarHeight = imageCache.menuBarHeight else {
+    private var contentHeight: CGFloat? {
+        guard let menuBarHeight = imageCache.menuBarHeight ?? screen.getMenuBarHeight() else {
             return nil
         }
-        if configuration.shapeKind != .none && configuration.isInset && imageCache.screen?.hasNotch == true {
+        if configuration.shapeKind != .none && configuration.isInset && screen.hasNotch {
             return menuBarHeight - appState.appearanceManager.menuBarInsetAmount * 2
         }
         return menuBarHeight
@@ -278,6 +278,10 @@ private struct IceBarContentView: View {
         }
     }
 
+    private var shadowOpacity: CGFloat {
+        configuration.current.hasShadow ? 0.5 : 0.33
+    }
+
     var body: some View {
         ZStack {
             content
@@ -287,7 +291,7 @@ private struct IceBarContentView: View {
                 .layoutBarStyle(appState: appState, averageColorInfo: colorManager.colorInfo)
                 .foregroundStyle(colorManager.colorInfo?.color.brightness ?? 0 > 0.67 ? .black : .white)
                 .clipShape(clipShape)
-                .shadow(color: .black.opacity(configuration.current.hasShadow ? 0.5 : 0), radius: 2.5)
+                .shadow(color: .black.opacity(shadowOpacity), radius: 2.5)
 
             if configuration.current.hasBorder {
                 clipShape
@@ -304,12 +308,27 @@ private struct IceBarContentView: View {
 
     @ViewBuilder
     private var content: some View {
-        if menuBarManager.isMenuBarHiddenBySystemUserDefaults {
+        if !ScreenCapture.cachedCheckPermissions() {
+            HStack {
+                Text("The Ice Bar requires screen recording permissions.")
+
+                Button {
+                    closePanel()
+                    appState.navigationState.settingsNavigationIdentifier = .advanced
+                    appState.appDelegate?.openSettingsWindow()
+                } label: {
+                    Text("Open Ice Settings")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.link)
+            }
+            .padding(.horizontal, 10)
+        } else if menuBarManager.isMenuBarHiddenBySystemUserDefaults {
             Text("Ice cannot display menu bar items for automatically hidden menu bars")
-                .padding(.horizontal, 5)
+                .padding(.horizontal, 10)
         } else if imageCache.cacheFailed(for: section) {
             Text("Unable to display menu bar items")
-                .padding(.horizontal, 5)
+                .padding(.horizontal, 10)
         } else {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {

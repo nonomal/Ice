@@ -194,12 +194,12 @@ final class MenuBarManager: ObservableObject {
                         alwaysHiddenSection.isEnabled
                     {
                         if alwaysHiddenSection.controlItem.state == .hideItems {
-                            if let alwaysHiddenControlItem = items.firstIndex(of: .alwaysHiddenControlItem).map({ items.remove(at: $0) }) {
+                            if let alwaysHiddenControlItem = items.firstIndex(matching: .alwaysHiddenControlItem).map({ items.remove(at: $0) }) {
                                 items.trimPrefix { $0.frame.maxX <= alwaysHiddenControlItem.frame.minX }
                             }
                         }
                     } else {
-                        if let hiddenControlItem = items.firstIndex(of: .hiddenControlItem).map({ items.remove(at: $0) }) {
+                        if let hiddenControlItem = items.firstIndex(matching: .hiddenControlItem).map({ items.remove(at: $0) }) {
                             items.trimPrefix { $0.frame.maxX <= hiddenControlItem.frame.minX }
                         }
                     }
@@ -261,7 +261,7 @@ final class MenuBarManager: ObservableObject {
 
         guard
             let image,
-            let color = image.averageColor(resolution: .low, options: .ignoreAlpha)
+            let color = image.averageColor(makeOpaque: true)
         else {
             return
         }
@@ -399,6 +399,19 @@ final class MenuBarManager: ObservableObject {
 
 // MARK: MenuBarManager: BindingExposable
 extension MenuBarManager: BindingExposable { }
+
+// MARK: - MenuBarAverageColorInfo
+
+/// Information for the menu bar's average color.
+struct MenuBarAverageColorInfo: Hashable {
+    enum Source: Hashable {
+        case menuBarWindow
+        case desktopWallpaper
+    }
+
+    var color: CGColor
+    var source: Source
+}
 
 // MARK: - Logger
 private extension Logger {
